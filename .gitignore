@@ -2,3 +2,5 @@
 *.env
 songs/*
 data/songs.json
+.venv/*
+.venv
