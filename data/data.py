@@ -40,6 +40,7 @@ class SongManager:
         self.track_new_id = 0
         self.artists = set()
 
+    def run_webdriver(self):
         options = Options()
         options.add_argument("--headless")
         options.add_argument("--disable-gpu")
@@ -314,6 +315,7 @@ if __name__ == "__main__":
     manager = SongManager()
     
     if args.melon:
+        manager.run_webdriver()
         manager.load_crawled_entries()
         manager.query_melon()
         manager.filter_tracks()
@@ -325,6 +327,7 @@ if __name__ == "__main__":
         manager.save_crawled_entries()
 
     elif args.youtube:
+        manager.run_webdriver()
         manager.load_crawled_entries()
         manager.fetch_youtube_links()
 
