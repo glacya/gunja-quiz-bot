@@ -1,2 +1,4 @@
 .key
 *.env
+songs/*
+data/songs.json
