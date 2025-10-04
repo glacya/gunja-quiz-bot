@@ -111,6 +111,10 @@ class SongManager:
                     print(f"Track {track.title} - {track.artist} has forbidden character")
                     continue
 
+                if track.title.lower().find("remix") >= 0:
+                    print(f"Track {track.title} is remix")
+                    continue
+
                 new_tracks.append(track)
 
             self.tracks = new_tracks
