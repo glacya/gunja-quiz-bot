@@ -1,0 +1,19 @@
+{
+    "exclude_artist": [
+        "임영웅",
+        "BOYNEXTDOOR"
+    ],
+    "exclude_uri": [
+        "l7Oc2-bOE2c",
+        "GNk9FaA-MvI"
+    ],
+    "exclude_song": [
+        {
+            "title": "아파 (Slow)",
+            "artist": "2NE1"
+        },
+        {
+            
+        }
+    ]
+}

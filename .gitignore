@@ -4,3 +4,4 @@ songs/*
 data/songs.json
 .venv/*
 .venv
+audios.tar

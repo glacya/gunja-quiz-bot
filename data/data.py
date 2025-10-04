@@ -12,8 +12,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 base_dir = Path(__file__).resolve().parent
 song_path = base_dir / "songs.json"
-exclude_path = base_dir / "forbidden_artists.json"
-allowed_symbols = r"`~!@#$%^&*()_\-+=\[\]{}\\|;:'\",.<>/?"
+exclude_path = base_dir / "forbidden.json"
+allowed_symbols = r"`~!@#$%^&*()_\-+=\[\]{}\\|;:'\",.<>/?’"
 pattern = rf"[^\u0041-\u005A\u0061-\u007A\u00C0-\u024F\uAC00-\uD7A30-9{allowed_symbols}\s]"
 forbidden_regex = re.compile(pattern)
 
@@ -93,16 +93,21 @@ class SongManager:
         with open(exclude_path, "r", encoding="utf-8") as f:
             json_data = json.load(f)
 
-            forbidden_artists = json_data["exclude"]
+            forbidden_artists = json_data["exclude_artist"]
+            forbidden_uri = json_data["exclude_uri"]
 
             new_tracks = []
 
             for track in self.tracks:
                 if track.artist in forbidden_artists:
-                    print(f"Track {track.title} is by forbidden artist {track.artist}")
+                    print(f"Filter: Track {track.title} is by forbidden artist {track.artist}")
                     continue
 
-                if bool(forbidden_regex.search(track.title)):
+                if track.yt_uri in forbidden_uri:
+                    print(f"Filter: Track {track.title} has forbidden URI")
+                    continue
+
+                if bool(forbidden_regex.search(track.title.split("(")[0])):
                     print(f"Track {track.title} - {track.artist} has forbidden character")
                     continue
 
@@ -309,6 +314,7 @@ if __name__ == "__main__":
     arg_parser.add_argument('-a', "--add", action="store_true", help="add new songs based on 'add_requests.json'")
     arg_parser.add_argument('-u', "--update", action="store_true", help="update existing songs based on 'update_requests.json'")
     arg_parser.add_argument('-r', "--remove", action="store_true", help="remove existing songs based on 'remove_requests.json'")
+    arg_parser.add_argument('-e', "--explore", action="store_true", help="explore data, custom action")
     args = arg_parser.parse_args()
 
 
@@ -318,7 +324,6 @@ if __name__ == "__main__":
         manager.run_webdriver()
         manager.load_crawled_entries()
         manager.query_melon()
-        manager.filter_tracks()
         manager.save_crawled_entries()
 
     elif args.filter:
@@ -343,6 +348,20 @@ if __name__ == "__main__":
         
     elif args.remove:
         manager.process_remove_requests()
+
+    elif args.explore:
+        manager.load_crawled_entries()
+
+        s = {}
+
+        for track in manager.tracks:
+            if track.yt_uri in s:
+                print(f"Duplicate: {track.id} and {s[track.yt_uri].id}")
+
+            s[track.yt_uri] = track
+
+        print(len(manager.tracks))
+        print(len(s))
 
     else:
         print("Usage: data.py [OPTIONS]")
