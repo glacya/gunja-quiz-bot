@@ -6,3 +6,4 @@ data/songs.json
 .venv
 audios.tar
 bot/log.txt
+bot/users.json
