@@ -5,3 +5,4 @@ data/songs.json
 .venv/*
 .venv
 audios.tar
+bot/log.txt
