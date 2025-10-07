@@ -63,6 +63,7 @@ class User:
     
 class Problem():
     MAX_HINTS = 3
+    HINT_INTERVAL = 15
     MAX_WRONG_ANSWERS = 10
     SKIP_VOTES = 3
     BASE_POINTS = 10
@@ -127,7 +128,7 @@ class Problem():
         
         tail = f"*문제에서 획득하는 점수: {Problem.BASE_POINTS - Problem.MAX_HINTS + self.hints}*"
 
-        first_part = leave_only_kr_en_chars(self.answer.split("("))
+        first_part = leave_only_kr_en_chars(self.answer.split("(")[0])
 
         if hint_index != Problem.MAX_HINTS:
             header = f"**힌트 {hint_index + 1}**"
@@ -475,7 +476,7 @@ class SongQuiz(commands.Cog):
         file_to_play = base_dir.parent / f"songs/{current_problem.track.yt_uri}.opus"
         audio_length = current_problem.track.yt_vid_length
 
-        offset = random.randint(0, audio_length * 2 // 3) if self.use_random_offset else 0
+        offset = random.randint(0, audio_length - (Problem.HINT_INTERVAL * (Problem.MAX_HINTS + 1))) if self.use_random_offset else 0
         audio = discord.FFmpegPCMAudio(file_to_play, before_options=f"-ss {offset}", options="-vn")
 
         current_problem.accept_answers()
@@ -490,18 +491,18 @@ class SongQuiz(commands.Cog):
         await channel.send(embed=embed)
 
         for _ in range(Problem.MAX_HINTS):
-            await asyncio.sleep(10) 
+            await asyncio.sleep(Problem.HINT_INTERVAL) 
 
             if current_problem_index == self.quiz_match_songs_played and self.match_id == current_match_id:
                 hint_title, hint_body, hint_tail = current_problem.hint_str()
-                embed = discord.Embed(
+                hint_embed = discord.Embed(
                     title=hint_title,
                     description="\n\n".join([hint_body, hint_tail]),
                     color=discord.Color.blue()
                 )
-                await channel.send(embed=embed)
+                await channel.send(embed=hint_embed)
 
-        await asyncio.sleep(audio_length - offset + 5 - Problem.MAX_HINTS * 10)
+        await asyncio.sleep(audio_length - offset + 5 - Problem.MAX_HINTS * Problem.HINT_INTERVAL)
 
         # Do nothing if quiz index 
         if current_problem_index == self.quiz_match_songs_played and self.match_id == current_match_id:
