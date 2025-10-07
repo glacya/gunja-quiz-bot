@@ -122,7 +122,7 @@ class Problem():
         self.hints = max(0, self.hints - 1)
 
         
-        tail = f"*문제에서 획득하는 점수: {Problem.BASE_POINTS - hint_index - 1}*"
+        tail = f"*문제에서 획득하는 점수: {Problem.BASE_POINTS - Problem.MAX_HINTS + self.hints}*"
 
         if hint_index != Problem.MAX_HINTS:
             header = f"**힌트 {hint_index + 1}**"
@@ -249,7 +249,7 @@ class SongQuiz(commands.Cog):
             answered_user.change_point(point)
 
             self.voice_client.stop()
-            embed = discord.Embed(title=f"**정답!**", description=f"정답자: {interaction.user.mention}\n**{current_problem.track.title}** - *{current_problem.track.artist}*", color=discord.Color.blue())
+            embed = discord.Embed(title=f"**정답!** (+{point}점)", description=f"정답자: {interaction.user.mention}\n**{current_problem.track.title}** - *{current_problem.track.artist}*", color=discord.Color.blue())
             await interaction.response.send_message(embed=embed)
             self.quiz_match_songs_played += 1
 
@@ -280,8 +280,8 @@ class SongQuiz(commands.Cog):
             elif point == 2:
                 # Other user had already submitted the answer. Make it failure.
                 embed = discord.Embed(
-                    title=f"{interaction.user.mention} **정답이지만..**",
-                    description=f"작은 차이로 누군가 먼저 정답을 맞혔어요. 다음 기회에!",
+                    title=f"**정답이지만..**",
+                    description=f"{interaction.user.mention}, 아쉽네요. 작은 차이로 누군가 먼저 정답을 맞혔어요. 다음 기회에!",
                     color=discord.Color.blue()
                     )
                 
