@@ -62,7 +62,7 @@ class User:
         return True
     
 class Problem():
-    MAX_HINTS = 2
+    MAX_HINTS = 3
     MAX_WRONG_ANSWERS = 10
     SKIP_VOTES = 3
     BASE_POINTS = 10
@@ -74,7 +74,11 @@ class Problem():
         self.wrong_answers = 0
         self.hints = Problem.MAX_HINTS
         self.skip_votes = Problem.SKIP_VOTES
+        self.prepared = False
         self.completed = False
+
+    def accept_answers(self):
+        self.prepared = True
     
     def compare_answer(self, user_answer: str):
         if self.completed:
@@ -116,7 +120,6 @@ class Problem():
 
     # Returns hint string of the current problem.
     def hint_str(self):
-        # TODO: Add more hint logic.
         hint_index = Problem.MAX_HINTS - self.hints
 
         self.hints = max(0, self.hints - 1)
@@ -124,14 +127,21 @@ class Problem():
         
         tail = f"*문제에서 획득하는 점수: {Problem.BASE_POINTS - Problem.MAX_HINTS + self.hints}*"
 
+        first_part = leave_only_kr_en_chars(self.answer.split("("))
+
         if hint_index != Problem.MAX_HINTS:
             header = f"**힌트 {hint_index + 1}**"
             body = None
 
             if hint_index == 0:
-                body = f"**제목 첫 글자: {self.answer[0]}**"
-            elif hint_index == 1:
                 body = f"**가수: {self.track.artist}**"
+            elif hint_index == 1:
+                body = f"**제목 첫 글자: {first_part[0]}**"
+            elif hint_index == 2:
+                if len(first_part) < 2:
+                    body = f"**제목 첫 두 개 글자: (힌트 없음)**"
+                else:
+                    body = f"**제목 첫 두 개 글자: {first_part[:2]}**"
 
             return (header, body, tail)
 
@@ -237,6 +247,10 @@ class SongQuiz(commands.Cog):
             await interaction.response.send_message("노래 퀴즈가 진행 중이지 않거나, 아직 문제를 불러오는 중이에요.", ephemeral=True)
             return
         
+        if not current_problem.prepared:
+            await interaction.response.send_message("문제가 아직 준비 중이에요. 조금만 기다려주세요.", ephemeral=True)
+            return
+
         correctness, point = current_problem.compare_answer(answer)
         guild = self.bot.get_guild(self.quiz_guild_id)
         channel = guild.get_channel(self.quiz_text_channel_id)
@@ -268,7 +282,7 @@ class SongQuiz(commands.Cog):
                 # Skip current quiz.
                 embed = discord.Embed(
                     title=f"**오답!** <남은 기회 없음>",
-                    description=f"오답 횟수 10회를 모두 소모했어요.\n정답은 **{current_problem.track.title}** - *{current_problem.track.artist}* 였습니다",
+                    description=f"{interaction.user.mention}의 답안:\n{answer}\n오답 횟수 10회를 모두 소모했어요.\n정답은 **{current_problem.track.title}** - *{current_problem.track.artist}* 였습니다",
                     color=discord.Color.blue()
                     )
 
@@ -314,6 +328,9 @@ class SongQuiz(commands.Cog):
 
     @app_commands.command(name="힌트", description="현재 나오는 노래 문제의 힌트를 봅니다. 노래 당 2번까지.")
     async def song_quiz_hint(self, interaction: discord.Interaction):
+        await interaction.response.send_message("힌트 기능은 더 이상 사용되지 않아요. 자동으로 힌트가 나와요.")
+        return
+
         current_problem = self.get_current_problem()
 
         if current_problem is None:
@@ -461,6 +478,8 @@ class SongQuiz(commands.Cog):
         offset = random.randint(0, audio_length * 2 // 3) if self.use_random_offset else 0
         audio = discord.FFmpegPCMAudio(file_to_play, before_options=f"-ss {offset}", options="-vn")
 
+        current_problem.accept_answers()
+
         self.voice_client.play(audio)
         embed = discord.Embed(
             title=f"**노래 재생 중: [문제 {self.quiz_match_songs_played + 1} / {self.quiz_match_songs_total}]**",
@@ -469,7 +488,20 @@ class SongQuiz(commands.Cog):
         )
 
         await channel.send(embed=embed)
-        await asyncio.sleep(audio_length - offset + 8)
+
+        for _ in range(Problem.MAX_HINTS):
+            await asyncio.sleep(10) 
+
+            if current_problem_index == self.quiz_match_songs_played and self.match_id == current_match_id:
+                hint_title, hint_body, hint_tail = current_problem.hint_str()
+                embed = discord.Embed(
+                    title=hint_title,
+                    description="\n\n".join([hint_body, hint_tail]),
+                    color=discord.Color.blue()
+                )
+                await channel.send(embed=embed)
+
+        await asyncio.sleep(audio_length - offset + 5 - Problem.MAX_HINTS * 10)
 
         # Do nothing if quiz index 
         if current_problem_index == self.quiz_match_songs_played and self.match_id == current_match_id:
