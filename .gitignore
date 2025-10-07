@@ -7,3 +7,6 @@ data/songs.json
 audios.tar
 bot/log.txt
 bot/users.json
+bot/rooms.json
+bot/transactions.json
+bot/stocks.json
