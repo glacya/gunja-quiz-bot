@@ -121,7 +121,6 @@ class GunjaQuizBot(commands.Bot):
 
     # Loads transactions from `transactions.json`.
     def load_transactions(self):
-        # TODO: Implement.
         transaction_file = base_dir / "transactions.json"
 
         try:
@@ -153,31 +152,34 @@ class GunjaQuizBot(commands.Bot):
     # Make transaction.
     # Append new transaction to the Bot, process it, and save immediately.
     def make_transaction(self, transaction: Transaction):
-        # TODO: Implement.
-        
+        if uid not in self.user_map:
+            self.user_map[uid] = User(uid)
+
         with self.transaction_lock:
             self.transactions.append(transaction)
             uid = transaction.uid
 
-            match transaction.item_type:
-                case Transaction.TYPE_QUIZ_REWARD:
-                    pass
-                case Transaction.TYPE_SONG_SKIP:
-                    pass
-                case Transaction.TYPE_STOCK:
-                    pass
-                case Transaction.TYPE_ROOM_UPGRADE:
-                    pass
-                case Transaction.TYPE_ROOM_REVENUE:
-                    pass
-
-
-        self.save_transactions()
+            self.user_map[uid].change_coin(transaction.delta)
+            self.save_transactions()
 
     # Filter out transactions that are too old. (over 10 days)
     def filter_transactions(self):
-        # TODO: Implement.
-        pass
+        def filter_func(transaction: Transaction) -> bool:
+            return (get_current_kst_time() - transaction.when).days > 10
+
+        with self.transaction_lock:
+            self.transactions = list(filter(filter_func, self.transactions))
+            
+    # Returns a stringified list of transactions, of the given user.
+    def show_transactions(self, uid: int) -> list[str]:
+        filtered = []
+
+        with self.transaction_lock:
+            filtered = list(filter(lambda x: x.uid == uid, self.transactions))
+        
+        user_transactions = sorted(filtered, key=lambda x: x.tid)
+
+        return list(map(str, user_transactions))
 
     # Get user coins.
     def get_user_coins(self, uid):

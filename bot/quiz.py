@@ -2,6 +2,9 @@ import asyncio
 import random
 import discord
 import json
+from bs4 import BeautifulSoup
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
 from discord.ext import commands
 from discord import app_commands
 
@@ -49,9 +52,8 @@ class Problem():
     # - If the problem is already solved by the other user, returns (False, 2) regardless of the answer.
     # - If the problem is skipped, returns (False, 3) regardless of the answer.
 
-    # TODO: Implement different submit mechanism.
-    # Current total 10 chances are too few, or can be dominated by a single person.
-    # How?
+    # NOTE: Maybe, alter submit mechanism so that UX is improved.
+    # Currently, providing 10 submit chances with many people can be frustrating.
     def compare_answer(self, user_answer: str):
         if self.completed:
             return False, 2
@@ -124,6 +126,44 @@ class Problem():
     def skip(self) -> bool:
         self.skipped = True
 
+class TrackRequest:
+    REQUEST_ID = 0
+
+    STATUS_IN_QUEUE = 0
+    STATUS_APPROVED = 1
+    STATUS_DENIED = 2
+
+    def __init__(self, uid, title, artist, yt_uri, yt_vid_title, yt_vid_length, status=0, notes=None):
+        TrackRequest.REQUEST_ID += 1
+
+        self.id = TrackRequest.REQUEST_ID
+        self.uid = uid
+        self.title = title
+        self.artist = artist
+        self.yt_uri = yt_uri
+        self.yt_vid_title = yt_vid_title
+        self.yt_vid_length = yt_vid_length
+        self.status = status
+        self.notes = notes
+
+    @staticmethod
+    def from_json(json_dict: dict):
+        id = json_dict['id']
+        uid = json_dict['uid']
+        title = json_dict['title']
+        artist = json_dict['artist']
+        yt_uri = json_dict['yt_uri']
+        yt_vid_title = json_dict['yt_vid_title']
+        yt_vid_length = json_dict['yt_vid_length']
+        status = json_dict['status']
+        notes = json_dict['notes']
+
+        req = TrackRequest(uid, title, artist, yt_uri, yt_vid_title, yt_vid_length, status=status, notes=notes)
+
+        req.id = id
+        TrackRequest.REQUEST_ID = max(TrackRequest.REQUEST_ID, id)
+        
+
 class SongQuiz(commands.Cog):
     def __init__(self, bot):
         self.quiz_running = False
@@ -139,6 +179,9 @@ class SongQuiz(commands.Cog):
 
         self.song_database = []
         self.load_song_database()
+
+        self.song_requests = []
+        self.load_song_requests()
 
         self.use_random_offset = False
 
@@ -205,7 +248,7 @@ class SongQuiz(commands.Cog):
             self.voice_client = None
             return
         
-        interaction.response.send_message("퀴즈 강제 종료!")
+        await interaction.response.send_message("퀴즈 강제 종료!")
         await self.show_quiz_scoreboard(at_end=True)
         await voice_client.disconnect()
         await interaction.response.send_message("한 번 더 하려면 **/노래퀴즈** 명령어를 사용하세요.\n노래 퀴즈의 랭킹을 보려면 **/랭킹** 명령어를 사용하세요.")
@@ -349,11 +392,16 @@ class SongQuiz(commands.Cog):
         output_string = ""
 
         for user in sorted_list:
+            member = guild.get_member(user.id)
+
+            if member is None:
+                continue
+
             if user.point != prev_point:
                 rank += 1
                 prev_point = user.point
             
-            line = f"**{rank}등**: {guild.get_member(user.id).mention}\t{user.point}점\n"
+            line = f"**{rank}등**: {member.mention}\t{user.point}점\n"
 
             output_string += line
 
@@ -370,7 +418,65 @@ class SongQuiz(commands.Cog):
     @app_commands.describe(artist="추가 요청할 노래의 가수/아티스트.")
     @app_commands.describe(url="추가 요청할 노래의 유튜브 링크. 음원 버전으로 부탁합니다.")
     async def song_quiz_add_request(self, interaction: discord.Interaction, title: str, artist: str, url: str):
-        # TODO: Implement Request.
+        await interaction.response.send_message("노래 추가 요청 중..", ephemeral=True)
+
+        options = Options()
+        options.add_argument("--headless")
+        options.add_argument("--disable-gpu")
+        web_driver = webdriver.Chrome(options=options)
+
+        try:
+            web_driver.get(url)
+            await asyncio.sleep(3)
+
+            res = web_driver.page_source
+            soup = BeautifulSoup(res, "html.parser")
+
+            vid_title_dom = soup.find_all("yt-formatted-string", class_="ytd-watch-metadata")
+            vid_title = None
+
+            for dom in vid_title_dom:
+                if dom.has_attr("title"):
+                    vid_title = dom.attrs["title"]
+                    break
+
+            vid_length_str = soup.find("span", class_="ytp-time-duration").text.split(":")
+            vid_length = 0
+            weight = 1
+
+            for i in reversed(map(int, vid_length_str)):
+                vid_length += i * weight
+                weight *= 60
+
+            vid_uri_args = url.split("?")[-1].split("&")
+            vid_uri = None
+            
+            for arg in vid_uri_args:
+                if arg.startswith("v="):
+                    vid_uri = arg.split("=")[-1]
+                    break
+
+            track_request = TrackRequest(interaction.user.id, vid_title, artist, vid_uri, vid_title, vid_length)
+            self.song_requests.append(track_request)
+
+            result_embed = discord.Embed(
+                title="노래 추가 요청 완료!",
+                description=f"노래 추가 요청이 등록되었어요.\n\n**{title}** - *{artist}*\n{url}",
+                color=quiz_color
+            )
+
+            await interaction.followup.send(embed=result_embed)
+        except:
+            fail_embed = discord.Embed(
+                title="노래 추가 요청 실패",
+                description=f"노래 추가 요청에 실패했어요. URL이 올바르지 않은 것 같아요.\n작성한 URL: {url}",
+                color=quiz_color
+            )
+            await interaction.followup.send(embed=fail_embed)
+    
+    @app_commands.command(name="노래추가내역", description="노래 추가의 결과를 봅니다. 최근 20건까지.")
+    async def song_quiz_show_add_request_result(self, interaction: discord.Interaction):
+        # TODO: Implement list show.
         await interaction.response.send_message("추가 예정입니다.", ephemeral=True)
 
     @app_commands.command(name="데이터갱신", description="(관리자 전용) 곡 데이터베이스를 새로고침합니다.")
@@ -399,6 +505,29 @@ class SongQuiz(commands.Cog):
                 track = Track(song["id"], song["title"], song["artist"], yt_uri=song["yt_uri"], yt_vid_title=song["yt_vid_title"], yt_vid_length=song["yt_vid_length"])
 
                 self.song_database.append(track)
+
+
+    def load_song_requests(self):
+        request_file = base_dir / "song_requests.json"
+
+        try:
+            with open(request_file, "r", encoding="utf-8") as f:
+                request_list = json.load(f)
+
+                for request in request_list:
+                    track_request = TrackRequest.from_json(request)
+                    self.song_requests.append(track_request)
+        except:
+            pass
+
+    def save_song_requests(self):
+        request_file = base_dir / "song_requests.json"
+
+        with open(request_file, "w", encoding="utf-8") as f:
+            requested = list(map(lambda x: x.__dict__), self.song_requests)
+
+            json.dump(requested, f, indent=2, ensure_ascii=False)
+            
 
     # Gets current song under quiz.
     def get_current_problem(self):
@@ -429,11 +558,16 @@ class SongQuiz(commands.Cog):
         people = len(scoreboard_list)
 
         for user in sorted_list:
+            member = guild.get_member(user.id)
+
+            if member is None:
+                continue
+
             if user.point != prev_point:
                 rank += 1
                 prev_point = user.point
             
-            line = f"**{rank}등**: {guild.get_member(user.id).mention}\t{user.point}점"
+            line = f"**{rank}등**: {member.mention}\t{user.point}점"
 
             if at_end:
                 if people - rank > 0:

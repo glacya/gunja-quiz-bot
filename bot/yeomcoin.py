@@ -58,22 +58,27 @@ class Stock:
 
         return stock
 
+class StockHoldings:
+    def __init__(self, id: str, count: int):
+        self.id = id
+        self.count = count
+
 class MarketNotification:
     NOTI_TYPE_DELIST = 0
     NOTI_TYPE_NEW_STOCK = 1
 
-    def __init__(self, noti_type: int, stock: Stock, uids: list[int] = []):
+    def __init__(self, noti_type: int, stock_id: str, uid: int):
         self.type = noti_type
-        self.stock = stock
-        self.uids = uids
+        self.stock_id = stock_id
+        self.uid = uid
 
     @staticmethod
-    def of_delist(stock):
-        return MarketNotification(MarketNotification.NOTI_TYPE_DELIST, stock)
+    def of_delist(stock_id, uid):
+        return MarketNotification(MarketNotification.NOTI_TYPE_DELIST, stock_id, uid)
     
     @staticmethod
-    def of_new_stock(stock):
-        return MarketNotification(MarketNotification.NOTI_TYPE_NEW_STOCK, stock)
+    def of_new_stock(stock_id, uid):
+        return MarketNotification(MarketNotification.NOTI_TYPE_NEW_STOCK, stock_id, uid)
 
 class Market:
     STOCK_NAMES = ["발기훈의박사반", "최진건하이닉스", "염승민의민족", "염민열제국", "쥐희준의퀴즈쇼", "대퀴벌레s", "엠따꿀벌", "군경자동차", "박규순슬라", "코로나퍼뜨린임인수", "전문하사최성훈"
@@ -92,6 +97,7 @@ class Market:
     def __init__(self, bot):
         self.bot = bot
         self.stocks_live = {}
+        self.user_stocks = {}
         self.market_under_maintenance = False
         self.notifications = []
 
@@ -102,9 +108,19 @@ class Market:
             with open(stock_file, "r", encoding="utf-8") as f:
                 stocks = json.load(f)
 
-                for stock_raw in stocks:
+                for stock_raw in stocks["stocks_live"]:
                     stock = Stock.from_json(stock_raw)
                     self.stocks_live[stock.id] = stock
+
+                for holdings_user in stocks["user_stocks"]:
+                    uid = holdings_user["uid"]
+                    user_holdings = []
+
+                    for holdings_raw in holdings_user["holdings"]:
+                        holdings = StockHoldings(holdings_raw["id"], holdings_raw["count"])
+                        user_holdings.append(holdings)
+
+                    self.user_stocks[uid] = user_holdings
         except:
             pass
 
@@ -112,12 +128,37 @@ class Market:
         stock_file = base_dir / "stocks.json"
 
         with open(stock_file, "w", encoding="utf-8") as f:
+            stock_list = list(map(lambda x: x.__dict__, self.stocks_live.values()))
+
             stocks = []
 
             for stock in self.stocks_live.values():
                 stocks.append(stock.__dict__)
 
-            json.dump(stocks, f, indent=2, ensure_ascii=False)
+            holding_list = []
+
+            for uid, holdings in self.stocks_live.items():
+                inner_list = []
+
+                for holdings_indiv in holdings:
+                    inner_list.append({
+                        "id": holdings_indiv.id,
+                        "count": holdings_indiv.count
+                    })
+
+                holding_obj = {
+                    "uid": uid,
+                    "holdings": inner_list
+                }
+
+                holding_list.append(holding_obj)
+            
+            final_object = {
+                "stocks_live": stock_list,
+                "user_stocks": holding_list
+            }
+
+            json.dump(final_object, f, indent=2, ensure_ascii=False)
 
     # Called every 30 minutes.
     # Processes market. It adjusts the stock price, check for delisting, and notify users if there were delists.
@@ -132,27 +173,47 @@ class Market:
             if stock.process(delist_bonus):
                 delisted_stocks.append(stock.id)
 
-        # TODO: Destroy stocks.
+        # Kill stock IDs.
+        for delist_id in delisted_stocks:
+            self.stocks_live.pop(delist_id)
 
-        
+        # Make notification to the owners of delisted stocks.
+        for uid, user_holdings in self.user_stocks.items():
+            live_holdings = []
+            for holdings in user_holdings:
+                if holdings.id in delisted_stocks:
+                    self.notifications.append(MarketNotification.of_delist(holdings.id, uid))
+                else:
+                    live_holdings.append(holdings)
+
+            self.user_stocks[uid] = live_holdings
+
+        # Spawn stock.
+        self.spawn_stock()
 
         self.market_under_maintenance = False
 
-        # TODO: Return a dictionary to give notifications.
-
         self.save_stocks()
-
-
-        # Finally, spawn a new stock if possible.
 
         return None
 
     # Spawns a new stock.
     # It would spawn a new stock based on the random probability.
-    # In short, I would like to adjust the number of stocks so that it can ideally at 
+    # In short, I would like to adjust the number of stocks so that it is ideally around STOCK_DESIRED_CAPACITY.
+    # But let's just use linear probability. Because it is easy.
     def spawn_stock(self):
-        # TODO: Implement.
-        pass
+        spawn_prob = 1.0 - max(0, len(self.stocks_live)) / (Market.STOCK_DESIRED_CAPACITY * 1.5)
+
+        if spawn_prob > random.random():
+            # Sample new stock ID, until it is not being used.
+            new_stock_id = random.choice(Market.STOCK_NAMES)
+
+            while new_stock_id in self.stocks_live.keys():
+                new_stock_id = random.choice(Market.STOCK_NAMES)
+
+            new_stock = Stock(new_stock_id)
+
+            self.stocks_live[new_stock_id] = new_stock
 
     # Buy or sell some stocks for user.
     # Leaves a transaction.
@@ -161,6 +222,7 @@ class Market:
         pass
 
 
+# Not used.
 class GunjaRoom:
     MAX_UPGRADE_CHOICES = 5
 
@@ -223,7 +285,7 @@ class GunjaRoom:
     ]
 
     def __init__(self, uid: int):
-        # TODO: Add more fields.
+        # FUTURE: Add more fields.
         self.uid = uid
         self.revenue = 0
 
@@ -232,22 +294,23 @@ class GunjaRoom:
     # Upgrade room with the given ID.
     # Note that, the user can upgrade only the first (GunjaRoom.MAX_UPGRADE_CHOICES) non-upgraded things. Be sure to take it.
     def upgrade(self, rid: str):
-        # TODO: Implement.
+        # FUTURE: Implement.
         pass
 
 
+# Not used.
 class RoomManager:
     def __init__(self, bot):
         self.bot = bot
         self.rooms = {}
 
     def load_rooms(self):
-        # TODO: Implement loading room data.
+        # FUTURE: Implement loading room data.
         pass
 
     # Processes gunja rooms. Called every day.
     def process_rooms(self):
-        # TODO: Implement.
+        # FUTURE: Implement.
         pass
 
     
@@ -260,7 +323,7 @@ class YeomCoinPlayer(commands.Cog):
         self.bot = bot
 
         self.market = Market(self.bot)
-        self.gunja_rooms = RoomManager(self.bot)
+        # self.gunja_rooms = RoomManager(self.bot)
 
         super.__init__()
 
@@ -301,15 +364,13 @@ class YeomCoinPlayer(commands.Cog):
         # TODO: Implement.
         pass
 
-    @app_commands.command(name="생활관확인", description="현재 생활관 상태, 생활관으로 얻은 수익, 구매 가능한 업그레이드를 봅니다.")
-    async def check_gunja_room(self, interaction: discord.Interaction):
-        # TODO: Implement.
-        pass
+    # @app_commands.command(name="생활관확인", description="현재 생활관 상태, 생활관으로 얻은 수익, 구매 가능한 업그레이드를 봅니다.")
+    # async def check_gunja_room(self, interaction: discord.Interaction):
+    #     pass
 
-    @app_commands.command(name="생활관구매", description="염코인을 사용하여 생활관을 업그레이드합니다. 생활관을 업그레이드하면 수익이 생깁니다.")
-    async def upgrade_gunja_room(self, interaction: discord.Interaction):
-        # TODO: Implement.
-        pass
+    # @app_commands.command(name="생활관구매", description="염코인을 사용하여 생활관을 업그레이드합니다. 생활관을 업그레이드하면 수익이 생깁니다.")
+    # async def upgrade_gunja_room(self, interaction: discord.Interaction):
+    #     pass
 
     @app_commands.command(name="거래내역", description="최근 10일간의 거래 내역을 봅니다. 최대 30건.")
     async def check_transactions(self, interaction: discord.Interaction):
