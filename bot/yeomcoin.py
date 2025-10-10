@@ -1,5 +1,6 @@
 import random
 import json
+import threading
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -98,8 +99,18 @@ class Market:
         self.bot = bot
         self.stocks_live = {}
         self.user_stocks = {}
-        self.market_under_maintenance = False
+        self.under_maintenance = False
         self.notifications = []
+
+        self.set_interval(1800)
+
+    def set_interval(self, sec):
+        def wrapper():
+            self.set_interval(sec)
+            self.process_market()
+        t = threading.Timer(sec, wrapper)
+        t.start()
+        return t
 
     def load_stocks(self):
         stock_file = base_dir / "stocks.json"
@@ -130,11 +141,6 @@ class Market:
         with open(stock_file, "w", encoding="utf-8") as f:
             stock_list = list(map(lambda x: x.__dict__, self.stocks_live.values()))
 
-            stocks = []
-
-            for stock in self.stocks_live.values():
-                stocks.append(stock.__dict__)
-
             holding_list = []
 
             for uid, holdings in self.stocks_live.items():
@@ -164,7 +170,7 @@ class Market:
     # Processes market. It adjusts the stock price, check for delisting, and notify users if there were delists.
     # If there were too much stocks, delist frequently.
     def process_market(self):
-        self.market_under_maintenance = True
+        self.under_maintenance = True
         delist_bonus = max(0, len(self.stocks_live) - Market.STOCK_DESIRED_CAPACITY) / 20
         delisted_stocks = []
 
@@ -191,7 +197,7 @@ class Market:
         # Spawn stock.
         self.spawn_stock()
 
-        self.market_under_maintenance = False
+        self.under_maintenance = False
 
         self.save_stocks()
 
@@ -217,10 +223,18 @@ class Market:
 
     # Buy or sell some stocks for user.
     # Leaves a transaction.
-    def transact_stock(self, stock_id: str, uid: int, amount: int):
-        # TODO: Implement.
-        pass
+    def transact_stock(self, stock_id: str, uid: int, amount: int, is_buy: bool):
+        if stock_id not in self.stocks_live:
+            return
+        
+        stock = self.stocks_live[stock_id]
+        delta = stock.price * amount
 
+        if is_buy:
+            delta = -delta
+
+        transaction = Transaction(uid, delta, Transaction.TYPE_STOCK, stock_id, is_buy)
+        self.bot.make_transaction(transaction)
 
 # Not used.
 class GunjaRoom:
@@ -341,27 +355,62 @@ class YeomCoinPlayer(commands.Cog):
 
     @app_commands.command(name="코인랭킹", description="보유한 염코인 랭킹을 봅니다.")
     async def show_coin_rank(self, interaction: discord.Interaction):
-        # TODO: Implement.
-        pass
+        users = self.bot.user_map.values()
+        sorted_list = sorted(users, key=lambda x: x.coin, reverse=True)
+
+        rank = 0
+        prev_coin = 9999999999
+        title_string = "**코인 보유 랭킹**"
+        output_string = ""
+        people = len(sorted_list)
+
+        for user in sorted_list:
+            member = interaction.guild.get_member(user.id)
+
+            if member is None:
+                continue
+
+            if user.coin != prev_coin:
+                rank += 1
+                prev_coin = user.coin
+            
+            line = f"**{rank}등**: {member.mention}\t{user.coin} 염코인"
+            output_string += line + "\n"
+
+        await interaction.response.send_message(embed=discord.Embed(title=title_string, description=output_string, color=money_color))
 
     @app_commands.command(name="주식매입", description="염코인을 사용해 주식을 매입합니다.")
     async def buy_stock(self, interaction: discord.Interaction):
         # TODO: Implement.
-        pass
+        if self.market.under_maintenance:
+            await interaction.response.send_message("지금은 시장이 운영 중이지 않아요. 잠시 뒤 다시 시도해주세요.", ephemeral=True)
+
+        # Show choices and methods.
+        # TODO: Define steps.
+        
+        return
     
     @app_commands.command(name="주식매도", description="주식을 매도하고 염코인을 받습니다.")
     async def sell_stock(self, interaction: discord.Interaction):
         # TODO: Implement.
+        if self.market.under_maintenance:
+            await interaction.response.send_message("지금은 시장이 운영 중이지 않아요. 잠시 뒤 다시 시도해주세요.", ephemeral=True)
+
         pass
 
     @app_commands.command(name="주식시세", description="주식 시세를 봅니다.")
     async def show_stock_chart(self, interaction: discord.Interaction):
         # TODO: Implement.
+        if self.market.under_maintenance:
+            await interaction.response.send_message("지금은 시장이 운영 중이지 않아요. 잠시 뒤 다시 시도해주세요.", ephemeral=True)
+
         pass
 
     @app_commands.command(name="주식확인", description="보유한 주식과, 그 정보를 봅니다.")
     async def check_stock(self, interaction: discord.Interaction):
         # TODO: Implement.
+        if self.market.under_maintenance:
+            await interaction.response.send_message("지금은 장이 운영 중이지 않아요. 잠시 뒤 다시 시도해주세요.", ephemeral=True)
         pass
 
     # @app_commands.command(name="생활관확인", description="현재 생활관 상태, 생활관으로 얻은 수익, 구매 가능한 업그레이드를 봅니다.")
@@ -372,9 +421,18 @@ class YeomCoinPlayer(commands.Cog):
     # async def upgrade_gunja_room(self, interaction: discord.Interaction):
     #     pass
 
-    @app_commands.command(name="거래내역", description="최근 10일간의 거래 내역을 봅니다. 최대 30건.")
+    @app_commands.command(name="코인기록", description="최근 10일간 염코인을 획득하거나 소모한 기록을 봅니다. 최대 30건.")
     async def check_transactions(self, interaction: discord.Interaction):
-        MAX_TRANSACTIONS_DISPLAY = 30
+        transaction_strs = self.bot.show_transactions(interaction.user.id)
 
-        # TODO: Implement.
-        pass
+        if len(transaction_strs) == 0:
+            await interaction.response.send_message("최근 10일간 염코인을 획득하거나 소모하지 않았어요.", ephemeral=True)
+            return
+        
+        embed = discord.Embed(
+            title="**염코인 기록**",
+            description=f"{interaction.user.mention} 님의 최근 10일간 염코인 기록:\n" + "\n".join(transaction_strs),
+            color=money_color
+        )
+
+        await interaction.response.send_message(embed=embed, ephemeral=True)

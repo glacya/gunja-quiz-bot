@@ -142,11 +142,8 @@ class GunjaQuizBot(commands.Bot):
         transaction_file = base_dir / "transactions.json"
 
         with open(transaction_file, "w", encoding="utf-8") as f:
-            trans = []
-
-            for transaction in self.transactions():
-                trans.append(transaction.__dict__)
-
+            trans = list(map(lambda x: x.to_dict(), self.transactions))
+            
             json.dump(trans, f, indent=2, ensure_ascii=False)
 
     # Make transaction.
@@ -156,11 +153,11 @@ class GunjaQuizBot(commands.Bot):
             self.user_map[uid] = User(uid)
 
         with self.transaction_lock:
-            self.transactions.append(transaction)
             uid = transaction.uid
-
-            self.user_map[uid].change_coin(transaction.delta)
-            self.save_transactions()
+            
+            if self.user_map[uid].change_coin(transaction.delta):
+                self.transactions.append(transaction)
+                self.save_transactions()
 
     # Filter out transactions that are too old. (over 10 days)
     def filter_transactions(self):
@@ -172,12 +169,13 @@ class GunjaQuizBot(commands.Bot):
             
     # Returns a stringified list of transactions, of the given user.
     def show_transactions(self, uid: int) -> list[str]:
+        MAX_TRANSACTIONS_DISPLAY = 30
         filtered = []
 
         with self.transaction_lock:
             filtered = list(filter(lambda x: x.uid == uid, self.transactions))
         
-        user_transactions = sorted(filtered, key=lambda x: x.tid)
+        user_transactions = sorted(filtered, key=lambda x: x.tid)[-MAX_TRANSACTIONS_DISPLAY:]
 
         return list(map(str, user_transactions))
 

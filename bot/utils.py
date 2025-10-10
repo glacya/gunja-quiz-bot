@@ -85,6 +85,12 @@ class Transaction:
         transaction.when = when
         Transaction.TRANSACTION_ID = max(Transaction.TRANSACTION_ID, tid)
 
+    def to_dict(self):
+        value = self.__dict__
+        value["when"] = datetime_to_str(value["when"])
+
+        return value
+
     def __str__(self):
         transaction_time_str = datetime_to_str(self.when)
 

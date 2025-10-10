@@ -133,7 +133,7 @@ class TrackRequest:
     STATUS_APPROVED = 1
     STATUS_DENIED = 2
 
-    def __init__(self, uid, title, artist, yt_uri, yt_vid_title, yt_vid_length, status=0, notes=None):
+    def __init__(self, uid, title, artist, yt_uri, yt_vid_title, yt_vid_length, status=0, notes=None, when=get_current_kst_time()):
         TrackRequest.REQUEST_ID += 1
 
         self.id = TrackRequest.REQUEST_ID
@@ -145,6 +145,7 @@ class TrackRequest:
         self.yt_vid_length = yt_vid_length
         self.status = status
         self.notes = notes
+        self.when = when
 
     @staticmethod
     def from_json(json_dict: dict):
@@ -157,12 +158,34 @@ class TrackRequest:
         yt_vid_length = json_dict['yt_vid_length']
         status = json_dict['status']
         notes = json_dict['notes']
+        when = datetime_from_str(json_dict['when'])
 
-        req = TrackRequest(uid, title, artist, yt_uri, yt_vid_title, yt_vid_length, status=status, notes=notes)
+        req = TrackRequest(uid, title, artist, yt_uri, yt_vid_title, yt_vid_length, status=status, notes=notes, when=when)
 
         req.id = id
         TrackRequest.REQUEST_ID = max(TrackRequest.REQUEST_ID, id)
         
+    def as_dict(self):
+        value = self.__dict__
+        value["when"] = datetime_to_str(value["when"])
+
+        return value
+    
+    def status_verbose(status: int):
+        match status:
+            case TrackRequest.STATUS_IN_QUEUE:
+                return "대기중"
+            case TrackRequest.STATUS_APPROVED:
+                return "추가됨"
+            case TrackRequest.STATUS_DENIED:
+                return "반려됨"
+            case _:
+                return "미정의"
+
+    def str_for_user(self):
+        status_exp = TrackRequest.status_verbose(self.status)
+
+        return f"{status_exp} | {self.title} - {self.artist} - {self.yt_uri} || {datetime_to_str(self.when)}"
 
 class SongQuiz(commands.Cog):
     def __init__(self, bot):
@@ -237,6 +260,10 @@ class SongQuiz(commands.Cog):
     
     @app_commands.command(name="종료", description="노래 퀴즈를 종료합니다.")
     async def song_quiz_end(self, interaction: discord.Interaction):
+        if not check_guild(interaction.guild_id):
+            await interaction.response.send_message("이 Discord 서버에서는 사용할 수 없습니다.", ephemeral=True)
+            return 
+
         if not self.quiz_running:
             await interaction.response.send_message("노래 퀴즈를 시작하지 않았는데 종료하려고 하다니 정말 박규순 같군..", ephemeral=True)
             return
@@ -259,6 +286,10 @@ class SongQuiz(commands.Cog):
     @app_commands.command(name="답", description="노래 퀴즈의 답안을 제출합니다.")  
     @app_commands.describe(answer="노래 제목의 정답. 대소문자, 특수문자, 띄어쓰기는 신경쓰지 않아도 돼요.")
     async def song_quiz_submit(self, interaction: discord.Interaction, answer: str):
+        if not check_guild(interaction.guild_id):
+            await interaction.response.send_message("이 Discord 서버에서는 사용할 수 없습니다.", ephemeral=True)
+            return 
+
         current_problem = self.get_current_problem()
 
         if current_problem is None:
@@ -337,6 +368,10 @@ class SongQuiz(commands.Cog):
 
     @app_commands.command(name="스킵", description="보유한 염코인의 10%를 지불하고 현재 문제를 스킵합니다. (최소 200 염코인 지불)")
     async def song_quiz_skip(self, interaction: discord.Interaction):
+        if not check_guild(interaction.guild_id):
+            await interaction.response.send_message("이 Discord 서버에서는 사용할 수 없습니다.", ephemeral=True)
+            return 
+
         current_problem = self.get_current_problem()
 
         if current_problem is None:
@@ -381,6 +416,10 @@ class SongQuiz(commands.Cog):
 
     @app_commands.command(name="랭킹", description="노래 퀴즈의 누적 순위표를 봅니다.")
     async def song_quiz_rank(self, interaction: discord.Interaction):
+        if not check_guild(interaction.guild_id):
+            await interaction.response.send_message("이 Discord 서버에서는 사용할 수 없습니다.", ephemeral=True)
+            return 
+
         scoreboard_list = self.bot.user_map.values()
         sorted_list = sorted(scoreboard_list, key=lambda x: x.point, reverse=True)
 
@@ -413,17 +452,23 @@ class SongQuiz(commands.Cog):
 
         await interaction.response.send_message(embed=embed)
 
-    @app_commands.command(name="노래추가요청", description="(추가 예정) 곡 데이터베이스에 노래를 추가하고 싶을 때 사용합니다.")
+    @app_commands.command(name="노래추가요청", description="곡 데이터베이스에 추가하고 싶은 노래를 등록합니다. ")
     @app_commands.describe(title="추가 요청할 노래의 제목.")
     @app_commands.describe(artist="추가 요청할 노래의 가수/아티스트.")
     @app_commands.describe(url="추가 요청할 노래의 유튜브 링크. 음원 버전으로 부탁합니다.")
     async def song_quiz_add_request(self, interaction: discord.Interaction, title: str, artist: str, url: str):
+        if not check_guild(interaction.guild_id):
+            await interaction.response.send_message("이 Discord 서버에서는 사용할 수 없습니다.", ephemeral=True)
+            return 
+
         await interaction.response.send_message("노래 추가 요청 중..", ephemeral=True)
 
         options = Options()
         options.add_argument("--headless")
         options.add_argument("--disable-gpu")
         web_driver = webdriver.Chrome(options=options)
+
+        # TODO: Make coin trasaction.
 
         try:
             web_driver.get(url)
@@ -476,12 +521,27 @@ class SongQuiz(commands.Cog):
     
     @app_commands.command(name="노래추가내역", description="노래 추가의 결과를 봅니다. 최근 20건까지.")
     async def song_quiz_show_add_request_result(self, interaction: discord.Interaction):
+        if not check_guild(interaction.guild_id):
+            await interaction.response.send_message("이 Discord 서버에서는 사용할 수 없습니다.", ephemeral=True)
+            return 
+
         # TODO: Implement list show.
+        # Learn how to show table in Discord.
         await interaction.response.send_message("추가 예정입니다.", ephemeral=True)
+    
+    @app_commands.command(name="노래추가검토", description="(관리자 전용) 곡 추가 요청을 검토합니다.")
+    async def song_quiz_judgement(self, interaction: discord.Interaction):
+        # TODO: Implement song judgement logic. 
+        # Learn how make interactive UI.
+        if not check_guild(interaction.guild_id) or not check_admin(interaction.user.id):
+            await interaction.response.send_message("관리자 전용 명령입니다.", ephemeral=True)
+            return
+
+        pass
 
     @app_commands.command(name="데이터갱신", description="(관리자 전용) 곡 데이터베이스를 새로고침합니다.")
     async def refresh_song_database(self, interaction: discord.Interaction):
-        if not check_admin(interaction.user.id):
+        if not check_admin(interaction.user.id) or not check_guild(interaction.guild_id):
             await interaction.response.send_message("관리자 전용 명령입니다.", ephemeral=True)
             return
 
@@ -524,7 +584,7 @@ class SongQuiz(commands.Cog):
         request_file = base_dir / "song_requests.json"
 
         with open(request_file, "w", encoding="utf-8") as f:
-            requested = list(map(lambda x: x.__dict__), self.song_requests)
+            requested = list(map(lambda x: x.to_dict()), self.song_requests)
 
             json.dump(requested, f, indent=2, ensure_ascii=False)
             
