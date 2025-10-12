@@ -4,6 +4,8 @@ import re
 import argparse
 import os
 import yt_dlp
+import subprocess
+from dotenv import load_dotenv
 from pathlib import Path
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -16,6 +18,9 @@ exclude_path = base_dir / "forbidden.json"
 allowed_symbols = r"`~!@#$%^&*()_\-+=\[\]{}\\|;:'\",.<>/?’"
 pattern = rf"[^\u0041-\u005A\u0061-\u007A\u00C0-\u024F\uAC00-\uD7A30-9{allowed_symbols}\s]"
 forbidden_regex = re.compile(pattern)
+
+key_path = None
+server_path = None
 
 YDL_OPTIONS = {'format': 'bestaudio', 'outtmpl': 'songs/%(id)s.opus', 'quiet': True}
 
@@ -269,16 +274,29 @@ class SongManager:
         self.save_crawled_entries()
 
     def download_youtube_video_by_one(self, track: Track):
+        global key_path
+        global server_path
+
         file_path = base_dir.parent / f"songs/{track.yt_uri}.opus"
 
         if os.path.exists(file_path):
             # If there is already a file, skip.
             return
 
+        # Otherwise, let's make a file and send it to remote server, if doesn't existed!
+        print(f"Downloading {track.title} {track.artist}..")
+
         yt_url = f"https://www.youtube.com/watch?v={track.yt_uri}"
         try:
             with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
                 ydl.download([yt_url])
+
+            if key_path is not None and server_path is not None:
+                shell_cmd = f"pscp -i {key_path} {file_path} {server_path}{track.yt_uri}.opus"
+
+                print(f"Executing command {shell_cmd}")
+
+                subprocess.run(shell_cmd, shell=True, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL, check=True)
 
         except KeyboardInterrupt:
             raise KeyboardInterrupt
@@ -294,20 +312,9 @@ class SongManager:
             for _ in as_completed(futures):
                 success += 1
 
-                if success % 10 == 0:
-                    print(f"> Downloaded {success} / {len(self.tracks)}")
+                # if success % 10 == 0:
+                #     print(f"> Downloaded {success} / {len(self.tracks)}")
 
-    def process_add_requests(self):
-        # TODO
-        pass
-
-    def process_update_requests(self):
-        # TODO
-        pass
-
-    def process_remove_requests(self):
-        # TODO
-        pass
 
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser()
@@ -315,12 +322,14 @@ if __name__ == "__main__":
     arg_parser.add_argument('-y', "--youtube", action="store_true", help="find YT links for queried tracks.")
     arg_parser.add_argument('-d', "--download", action="store_true", help="download audio files with given YT links.")
     arg_parser.add_argument('-f', "--filter", action="store_true", help="filter artists with exclusion list 'forbidden_artists.json'")
-    arg_parser.add_argument('-a', "--add", action="store_true", help="add new songs based on 'add_requests.json'")
-    arg_parser.add_argument('-u', "--update", action="store_true", help="update existing songs based on 'update_requests.json'")
-    arg_parser.add_argument('-r', "--remove", action="store_true", help="remove existing songs based on 'remove_requests.json'")
-    arg_parser.add_argument('-e', "--explore", action="store_true", help="explore data, custom action")
+    arg_parser.add_argument('-e', "--explore", action="store_true", help="explore data, implement your custom action for traveling song data.")
     args = arg_parser.parse_args()
 
+    env_path = base_dir / ".env"
+    load_dotenv(dotenv_path=env_path)
+
+    key_path = os.environ.get("SSH_KEY_PATH")
+    server_path = os.environ.get("SERVER_PATH")
 
     manager = SongManager()
     
@@ -341,17 +350,14 @@ if __name__ == "__main__":
         manager.fetch_youtube_links()
 
     elif args.download:
+        if key_path is None:
+            print("Running on remote..")
+        
+        else:
+            print("Running on local..")
+
         manager.load_crawled_entries()
         manager.download_youtube_audios()
-    
-    elif args.add:
-        manager.process_add_requests()
-
-    elif args.update:
-        manager.process_update_requests()
-        
-    elif args.remove:
-        manager.process_remove_requests()
 
     elif args.explore:
         manager.load_crawled_entries()

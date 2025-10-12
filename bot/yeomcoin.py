@@ -339,7 +339,7 @@ class YeomCoinPlayer(commands.Cog):
         self.market = Market(self.bot)
         # self.gunja_rooms = RoomManager(self.bot)
 
-        super.__init__()
+        super().__init__()
 
     @app_commands.command(name="코인", description="보유한 염코인 개수를 봅니다.")
     async def show_coins(self, interaction: discord.Interaction):
@@ -379,39 +379,39 @@ class YeomCoinPlayer(commands.Cog):
 
         await interaction.response.send_message(embed=discord.Embed(title=title_string, description=output_string, color=money_color))
 
-    @app_commands.command(name="주식매입", description="염코인을 사용해 주식을 매입합니다.")
-    async def buy_stock(self, interaction: discord.Interaction):
-        # TODO: Implement.
-        if self.market.under_maintenance:
-            await interaction.response.send_message("지금은 시장이 운영 중이지 않아요. 잠시 뒤 다시 시도해주세요.", ephemeral=True)
+    # @app_commands.command(name="주식매입", description="염코인을 사용해 주식을 매입합니다.")
+    # async def buy_stock(self, interaction: discord.Interaction):
+    #     # TODO: Implement.
+    #     if self.market.under_maintenance:
+    #         await interaction.response.send_message("지금은 시장이 운영 중이지 않아요. 잠시 뒤 다시 시도해주세요.", ephemeral=True)
 
-        # Show choices and methods.
-        # TODO: Define steps.
+    #     # Show choices and methods.
+    #     # TODO: Define steps.
         
-        return
+    #     return
     
-    @app_commands.command(name="주식매도", description="주식을 매도하고 염코인을 받습니다.")
-    async def sell_stock(self, interaction: discord.Interaction):
-        # TODO: Implement.
-        if self.market.under_maintenance:
-            await interaction.response.send_message("지금은 시장이 운영 중이지 않아요. 잠시 뒤 다시 시도해주세요.", ephemeral=True)
+    # @app_commands.command(name="주식매도", description="주식을 매도하고 염코인을 받습니다.")
+    # async def sell_stock(self, interaction: discord.Interaction):
+    #     # TODO: Implement.
+    #     if self.market.under_maintenance:
+    #         await interaction.response.send_message("지금은 시장이 운영 중이지 않아요. 잠시 뒤 다시 시도해주세요.", ephemeral=True)
 
-        pass
+    #     pass
 
-    @app_commands.command(name="주식시세", description="주식 시세를 봅니다.")
-    async def show_stock_chart(self, interaction: discord.Interaction):
-        # TODO: Implement.
-        if self.market.under_maintenance:
-            await interaction.response.send_message("지금은 시장이 운영 중이지 않아요. 잠시 뒤 다시 시도해주세요.", ephemeral=True)
+    # @app_commands.command(name="주식시세", description="주식 시세를 봅니다.")
+    # async def show_stock_chart(self, interaction: discord.Interaction):
+    #     # TODO: Implement.
+    #     if self.market.under_maintenance:
+    #         await interaction.response.send_message("지금은 시장이 운영 중이지 않아요. 잠시 뒤 다시 시도해주세요.", ephemeral=True)
 
-        pass
+    #     pass
 
-    @app_commands.command(name="주식확인", description="보유한 주식과, 그 정보를 봅니다.")
-    async def check_stock(self, interaction: discord.Interaction):
-        # TODO: Implement.
-        if self.market.under_maintenance:
-            await interaction.response.send_message("지금은 장이 운영 중이지 않아요. 잠시 뒤 다시 시도해주세요.", ephemeral=True)
-        pass
+    # @app_commands.command(name="주식확인", description="보유한 주식과, 그 정보를 봅니다.")
+    # async def check_stock(self, interaction: discord.Interaction):
+    #     # TODO: Implement.
+    #     if self.market.under_maintenance:
+    #         await interaction.response.send_message("지금은 장이 운영 중이지 않아요. 잠시 뒤 다시 시도해주세요.", ephemeral=True)
+    #     pass
 
     # @app_commands.command(name="생활관확인", description="현재 생활관 상태, 생활관으로 얻은 수익, 구매 가능한 업그레이드를 봅니다.")
     # async def check_gunja_room(self, interaction: discord.Interaction):

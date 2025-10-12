@@ -1,5 +1,6 @@
 .key
 *.env
+*__pycache__
 songs/*
 data/songs.json
 .venv/*
@@ -11,3 +12,4 @@ bot/rooms.json
 bot/transactions.json
 bot/stocks.json
 bot/song_requests.json
+shoot.sh

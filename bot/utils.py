@@ -1,5 +1,6 @@
 from pathlib import Path
 import re
+from dotenv import load_dotenv
 from datetime import datetime, timezone, timedelta
 
 base_dir = Path(__file__).resolve().parent
@@ -9,22 +10,32 @@ FFMPEG_OPTIONS = {'options': '-vn'}
 allowed_user_id = None
 allowed_guild_id = None
 
+def set_env(guild, user):
+    global allowed_guild_id
+    global allowed_user_id
+
+    allowed_guild_id = guild
+    allowed_user_id = user
+
 def check_admin(id):
-    return int(id) == allowed_user_id
+    global allowed_user_id
+    return int(id) == int(allowed_user_id)
 
 def check_guild(id):
-    return int(id) == allowed_guild_id
+    global allowed_guild_id
+    return int(id) == int(allowed_guild_id)
 
 
 def get_current_kst_time():
     KST = timezone(timedelta(hours=9))
-    return datetime.now(KST)
+    return datetime.now(KST).replace(tzinfo=KST)
 
 def datetime_to_str(dt: datetime):
     return dt.strftime("%Y-%m-%d %H:%M:%S")
 
 def datetime_from_str(s: str):
-    return datetime.strptime(s, "%Y-%m-%d %H:%M:%S")
+    KST = timezone(timedelta(hours=9))
+    return datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=KST)
 
 # Given a string, leave only KR characters and alphabets, numerics.
 # Then, convert every uppercase alphabets to lowercase alphabets.
@@ -86,7 +97,7 @@ class Transaction:
         Transaction.TRANSACTION_ID = max(Transaction.TRANSACTION_ID, tid)
 
     def to_dict(self):
-        value = self.__dict__
+        value = self.__dict__.copy()
         value["when"] = datetime_to_str(value["when"])
 
         return value

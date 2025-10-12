@@ -30,9 +30,9 @@ class MiscCog(commands.Cog):
 
     @app_commands.command(name="버전", description="봇의 버전과 업데이트 날짜를 보여줍니다.")
     async def version(self, interaction: discord.Interaction):
-        content = "버전: v1.0.0\n마지막 업데이트: 2025.10.08\n" \
-        "업데이트 주요 내역: 힌트 개선, 스킵 개선\n" \
-        "업데이트 예정 기능: 노래 추가 요청 기능, 노래 삭제 기능, 코인 랭킹, 코인 사용처(주식, 생활관꾸미기)"
+        content = "버전: v2.0.0\n마지막 업데이트: 2025.10.12\n" \
+        "업데이트 주요 내역: 노래 추가 기능\n" \
+        "업데이트 예정 기능: 없음"
         await interaction.response.send_message(embed=discord.Embed(title="**염민열의 노래퀴즈**", description=content, color=misc_color), ephemeral=True)
 
 
@@ -189,12 +189,18 @@ class GunjaQuizBot(commands.Bot):
 for cmd in SongQuiz.__cog_app_commands__:
     print("Cog command:", cmd.name)
 
+for cmd in YeomCoinPlayer.__cog_app_commands__:
+    print("Cog command:", cmd.name)
+
 if __name__ == "__main__":
-    load_dotenv()
+    env_path = base_dir / ".env"
+    load_dotenv(dotenv_path=env_path)
 
     bot_token = os.environ.get('DISCORD_TOKEN')
     allowed_guild_id = os.environ.get('ALLOWED_GUILD')
     allowed_user_id = os.environ.get('ALLOWED_USER')
+
+    set_env(allowed_guild_id, allowed_user_id)
 
     intents = discord.Intents.default()
     intents.members = True
