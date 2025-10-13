@@ -496,6 +496,9 @@ class SongQuiz(commands.Cog):
             await interaction.response.send_message("누군가 노래를 추가하는 중이에요. 잠시 뒤에 다시 시도해주세요.", ephemeral=True)
             return
         
+        uid = interaction.user.id
+        channel = interaction.channel
+
         await interaction.response.send_message("노래 추가 요청 중.. 조금만 기다려주세요.", ephemeral=True)
     
         self.adding_song_request = True
@@ -546,7 +549,7 @@ class SongQuiz(commands.Cog):
                         vid_uri = arg.split("=")[-1]
                         break
 
-            track_request = TrackRequest(interaction.user.id, title, artist, vid_uri, vid_title, vid_length)
+            track_request = TrackRequest(uid, title, artist, vid_uri, vid_title, vid_length)
             self.song_requests.append(track_request)
 
             result_embed = discord.Embed(
@@ -558,7 +561,7 @@ class SongQuiz(commands.Cog):
             self.adding_song_request = False
             self.save_song_requests()
 
-            await interaction.channel.send(embed=result_embed)
+            await channel.send(embed=result_embed)
         except Exception as e:
             print(f"Error catched: {e}")
 
