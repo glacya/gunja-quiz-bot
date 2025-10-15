@@ -93,9 +93,8 @@ class GunjaQuizBot(commands.Bot):
         # More precisely, person with i-th rank would receive (n - i) coins.
 
         # If there are ties, the rank is generously determined:
-        # ex) Rank is [1 1 2 2 2 3 4 5]
-        #     If score was [500 500 400 400 300 200 100 0].
-        #     Received coins are [7 7 6 6 6 5 4 3].
+        # ex: Suppose the ranks are [1 1 2 2 2 3 4 5], if score was [500 500 400 400 300 200 100 0].
+        #     And, coins that participants received are [7 7 6 6 6 5 4 3].
 
         rank = 0
         prev_point = 9999999999
@@ -185,12 +184,6 @@ class GunjaQuizBot(commands.Bot):
             self.user_map[uid] = User(uid)
 
         return self.user_map[uid].coin
-
-for cmd in SongQuiz.__cog_app_commands__:
-    print("Cog command:", cmd.name)
-
-for cmd in YeomCoinPlayer.__cog_app_commands__:
-    print("Cog command:", cmd.name)
 
 if __name__ == "__main__":
     env_path = base_dir / ".env"

@@ -5,7 +5,6 @@ import argparse
 import os
 import yt_dlp
 import subprocess
-from dotenv import load_dotenv
 from pathlib import Path
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -18,9 +17,6 @@ exclude_path = base_dir / "forbidden.json"
 allowed_symbols = r"`~!@#$%^&*()_\-+=\[\]{}\\|;:'\",.<>/?’"
 pattern = rf"[^\u0041-\u005A\u0061-\u007A\u00C0-\u024F\uAC00-\uD7A30-9{allowed_symbols}\s]"
 forbidden_regex = re.compile(pattern)
-
-key_path = None
-server_path = None
 
 YDL_OPTIONS = {'format': 'bestaudio', 'outtmpl': 'songs/%(id)s.opus', 'quiet': True}
 
@@ -52,6 +48,7 @@ class SongManager:
 
         self.driver = webdriver.Chrome(options=options)
 
+    # Creates a unique string of a track, by concatenating title and artist.
     def dist_str(title: str, artist: str):
         return f"{title}|{artist}"
 
@@ -160,9 +157,6 @@ class SongManager:
                 self.tracks.append(Track(new_id, title, artist))
                 self.artists.add(artist)
 
-                # print(f"{new_id}\t{title}\t{artist}")
-
-
     def query_melon_on_top100(self):
         query_url_string = "https://www.melon.com/chart/index.htm"
 
@@ -200,8 +194,6 @@ class SongManager:
                 self.tracks.append(Track(new_id, title, artist))
                 self.artists.add(artist)
 
-                # print(f"{new_id}\t{title}\t{artist}")
-
     def query_melon(self):
         for year in range(2010, 2025):
             self.query_melon_by_year(year)
@@ -237,8 +229,6 @@ class SongManager:
 
             vid_title_a = vid_metadata.find("a", id="video-title")
             vid_title = vid_title_a.attrs["title"]
-        
-            # print(vid_title)
 
             vid_length = 0
             weight = 1
@@ -246,8 +236,6 @@ class SongManager:
                 index = -1 - i
                 vid_length += len_list[index] * weight
                 weight *= 60
-            
-            # print(f"vid_length: {vid_length}")
 
             if vid_length <= 600:
                 # Under 10 minutes: It should be correct video.
@@ -274,9 +262,6 @@ class SongManager:
         self.save_crawled_entries()
 
     def download_youtube_video_by_one(self, track: Track):
-        global key_path
-        global server_path
-
         file_path = base_dir.parent / f"songs/{track.yt_uri}.opus"
 
         if os.path.exists(file_path):
@@ -290,13 +275,6 @@ class SongManager:
         try:
             with yt_dlp.YoutubeDL(YDL_OPTIONS) as ydl:
                 ydl.download([yt_url])
-
-            if key_path is not None and server_path is not None:
-                shell_cmd = f"pscp -i {key_path} {file_path} {server_path}{track.yt_uri}.opus"
-
-                print(f"Executing command {shell_cmd}")
-
-                subprocess.run(shell_cmd, shell=True, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL, check=True)
 
         except KeyboardInterrupt:
             raise KeyboardInterrupt
@@ -312,10 +290,6 @@ class SongManager:
             for _ in as_completed(futures):
                 success += 1
 
-                # if success % 10 == 0:
-                #     print(f"> Downloaded {success} / {len(self.tracks)}")
-
-
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument('-m', "--melon", action="store_true", help="query melon chart to collect basic database of songs.")
@@ -324,12 +298,6 @@ if __name__ == "__main__":
     arg_parser.add_argument('-f', "--filter", action="store_true", help="filter artists with exclusion list 'forbidden_artists.json'")
     arg_parser.add_argument('-e', "--explore", action="store_true", help="explore data, implement your custom action for traveling song data.")
     args = arg_parser.parse_args()
-
-    env_path = base_dir / ".env"
-    load_dotenv(dotenv_path=env_path)
-
-    key_path = os.environ.get("SSH_KEY_PATH")
-    server_path = os.environ.get("SERVER_PATH")
 
     manager = SongManager()
     
@@ -350,12 +318,6 @@ if __name__ == "__main__":
         manager.fetch_youtube_links()
 
     elif args.download:
-        if key_path is None:
-            print("Running on remote..")
-        
-        else:
-            print("Running on local..")
-
         manager.load_crawled_entries()
         manager.download_youtube_audios()
 

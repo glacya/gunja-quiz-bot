@@ -67,9 +67,6 @@ class Transaction:
 
     TYPE_QUIZ_REWARD = 0
     TYPE_SONG_SKIP = 1
-    TYPE_STOCK = 2
-    # TYPE_ROOM_UPGRADE = 3
-    # TYPE_ROOM_REVENUE = 4
 
     def __init__(self, uid: int, delta: int, item_type: int, item_id: any, is_buy: bool):
         Transaction.TRANSACTION_ID += 1
@@ -110,9 +107,5 @@ class Transaction:
                 return f"퀴즈 보상\t**{self.delta}**\t{transaction_time_str}"
             case Transaction.TYPE_SONG_SKIP:
                 return f"노래 스킵\t**{self.delta}**\t{transaction_time_str}"
-            case Transaction.TYPE_STOCK:
-                buy_string = "구매" if self.is_buy else "판매"
-
-                return f"주식 거래\t**{self.delta}**\t{transaction_time_str}\t{buy_string}\t*{self.item_id}*"
 
         return "---"
