@@ -45,7 +45,7 @@ def leave_only_kr_en_chars(s: str):
     return subbed.lower()
 
 class User:
-    def __init__(self, id: int, point: int = 0, coin: int = 1000):
+    def __init__(self, id: int, point: int = 0, coin: int = 10):
         self.id = id
         self.point = point
         self.coin = coin

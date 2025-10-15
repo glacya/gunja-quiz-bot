@@ -133,11 +133,12 @@ class TrackRequest:
     STATUS_APPROVED = 1
     STATUS_DENIED = 2
 
-    def __init__(self, uid, title, artist, yt_uri, yt_vid_title, yt_vid_length, status=0, notes=None, when=None):
+    def __init__(self, uid, username, title, artist, yt_uri, yt_vid_title, yt_vid_length, status=0, notes=None, when=None):
         TrackRequest.REQUEST_ID += 1
 
         self.id = TrackRequest.REQUEST_ID
         self.uid = uid
+        self.username = username
         self.title = title
         self.artist = artist
         self.yt_uri = yt_uri
@@ -150,12 +151,11 @@ class TrackRequest:
         if when is None:
             self.when = get_current_kst_time()
 
-            # print("INIT:", self.when, type(self.when))
-
     @staticmethod
     def from_json(json_dict: dict):
         id = json_dict['id']
         uid = json_dict['uid']
+        username = json_dict['username']
         title = json_dict['title']
         artist = json_dict['artist']
         yt_uri = json_dict['yt_uri']
@@ -165,9 +165,7 @@ class TrackRequest:
         notes = json_dict['notes']
         when = datetime_from_str(json_dict['when'])
 
-        # print("STATIC:", when, type(when))
-
-        req = TrackRequest(uid, title, artist, yt_uri, yt_vid_title, yt_vid_length, status=status, notes=notes, when=when)
+        req = TrackRequest(uid, username, title, artist, yt_uri, yt_vid_title, yt_vid_length, status=status, notes=notes, when=when)
 
         req.id = id
         TrackRequest.REQUEST_ID = max(TrackRequest.REQUEST_ID, id)
@@ -183,38 +181,19 @@ class TrackRequest:
     def status_verbose(status: int):
         match status:
             case TrackRequest.STATUS_IN_QUEUE:
-                return "대기중"
+                return "*대기중*"
             case TrackRequest.STATUS_APPROVED:
-                return "추가됨"
+                return "**추가됨**"
             case TrackRequest.STATUS_DENIED:
-                return "반려됨"
+                return "__반려됨__"
             case _:
                 return "미정의"
 
-    def str_for_user(self):
+    def str_for_user(self, member_elem):
         status_exp = TrackRequest.status_verbose(self.status)
+        notes = self.notes if self.notes is not None else ""
 
-        # print(f"Datetime object: {self.when}, {type(self.when)}")
-
-        return f"{status_exp} | {self.title.replace("*", "")} - {self.artist.replace("*", "")} - {self.yt_uri} | {datetime_to_str(self.when)}"
-
-class TrackRequestJudgeView(discord.ui.View):
-    def __init__(self, user: discord.User):
-        super().__init__(timeout=60)
-        self.user = user
-        self.value = None
-
-    @discord.ui.button(label="승인", style=discord.ButtonStyle.success)
-    async def yes_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.value = True
-        await interaction.response.send_message("승인했습니다. ✅", ephemeral=True)
-        self.stop()
-
-    @discord.ui.button(label="반려", style=discord.ButtonStyle.danger)
-    async def no_button(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.value = False
-        await interaction.response.send_message("반려했습니다. ❌", ephemeral=True)
-        self.stop()
+        return f"{status_exp} | {self.title.replace("*", "")} - {self.artist.replace("*", "")} | {member_elem} | {notes}"
 
 class SongQuiz(commands.Cog):
     def __init__(self, bot):
@@ -420,7 +399,7 @@ class SongQuiz(commands.Cog):
         if user_coins < skip_price:
             out_embed = discord.Embed(
                 title="염코인 부족",
-                description=f"염코인이 부족해 노래를 스킵할 수 없어요. 최소 200 염코인이 있어야 스킵 가능합니다.\n\n*보유한 염코인: {user_coins}개*",
+                description=f"염코인이 부족해 노래를 스킵할 수 없어요. 최소 2 염코인이 있어야 스킵 가능합니다.\n\n*보유한 염코인: {user_coins}개*",
                 color=quiz_color
             )
             await interaction.response.send_message(embed=out_embed, ephemeral=True)
@@ -497,9 +476,10 @@ class SongQuiz(commands.Cog):
             return
         
         uid = interaction.user.id
+        username = interaction.user.name
         channel = interaction.channel
 
-        await interaction.response.send_message("노래 추가 요청 중.. 조금만 기다려주세요.", ephemeral=True)
+        await interaction.response.send_message("노래 추가 요청 중.. 약 15초 ~ 1분 정도 걸려요.", ephemeral=True)
     
         self.adding_song_request = True
 
@@ -507,8 +487,6 @@ class SongQuiz(commands.Cog):
         options.add_argument("--headless")
         options.add_argument("--disable-gpu")
         web_driver = webdriver.Chrome(options=options)
-
-        # TODO: Make coin trasaction.
 
         print(f"Song Request in process.. {title} {artist} {url}")
 
@@ -549,7 +527,7 @@ class SongQuiz(commands.Cog):
                         vid_uri = arg.split("=")[-1]
                         break
 
-            track_request = TrackRequest(uid, title, artist, vid_uri, vid_title, vid_length)
+            track_request = TrackRequest(uid, username, title, artist, vid_uri, vid_title, vid_length)
             self.song_requests.append(track_request)
 
             result_embed = discord.Embed(
@@ -574,13 +552,13 @@ class SongQuiz(commands.Cog):
 
             await interaction.followup.send(embed=fail_embed, ephemeral=True)
     
-    @app_commands.command(name="노래추가내역", description="노래 추가의 결과를 봅니다. 최근 20건까지.")
+    @app_commands.command(name="노래추가내역", description="노래 추가의 결과를 봅니다. 최근 50건까지.")
     async def song_quiz_show_add_request_result(self, interaction: discord.Interaction):
         if not check_guild(interaction.guild_id):
             await interaction.response.send_message("이 Discord 서버에서는 사용할 수 없습니다.", ephemeral=True)
             return 
 
-        sorted_list = sorted(self.song_requests, key=lambda x: x.when)[-20:]
+        sorted_list = sorted(self.song_requests, key=lambda x: x.when)[-50:]
 
         if len(sorted_list) == 0:
             await interaction.response.send_message("최근 기록이 없어요.", ephemeral=True)
@@ -593,70 +571,18 @@ class SongQuiz(commands.Cog):
             if member is not None:
                 member_elem = f"{member.mention}"
 
-            return f"{member_elem} 요청: {request.str_for_user()}"
+            return request.str_for_user(member_elem)
 
         request_list = list(map(line_lambda, sorted_list))
         list_str = "\n".join(request_list)
 
         embed = discord.Embed(
-            title="노래 추가 내역 (최근 20건)",
+            title="노래 추가 내역 (최근 50건)",
             description=list_str,
             color=quiz_color,
         )
 
         await interaction.response.send_message(embed=embed, ephemeral=True)
-
-    @app_commands.command(name="노래추가검토", description="(관리자 전용) 노래 추가 요청을 검토합니다.")
-    async def song_quiz_judge(self, interaction: discord.Interaction):
-        if not check_guild(interaction.guild_id) or not check_admin(interaction.user.id):
-            await interaction.response.send_message("이 Discord 서버에서는 사용할 수 없습니다.", ephemeral=True)
-            return
-
-        not_processed = list(filter(lambda x: x.status == TrackRequest.STATUS_IN_QUEUE, self.song_requests))
-
-        if len(not_processed) == 0:
-            await interaction.response.send_message("처리해야 하는 노래 추가 요청이 없어요.", ephemeral=True)
-            return
-
-        oldest = sorted(not_processed, key=lambda x: x.when)[0]
-
-        view = TrackRequestJudgeView(interaction.user)
-        request_user = interaction.guild.get_member(oldest.uid)
-
-        embed = discord.Embed(
-            title="노래 추가 요청 확인",
-            description=f"{request_user.mention if request_user is not None else "(정보 없음)"} : {oldest.str_for_user()}",
-            color=quiz_color
-        )
-
-        await interaction.response.send_message(
-            embed=embed,
-            view=view,
-            ephemeral=True
-        )
-
-        # Wait for user to click a button or timeout
-        await view.wait()
-
-        if view.value is None:
-            await interaction.followup.send("시간 초과. 다시 시도해주세요.", ephemeral=True)
-        elif view.value:
-            oldest.status = TrackRequest.STATUS_APPROVED
-
-            await interaction.followup.send(f"곡 {oldest.title} - {oldest.artist} 추가 완료.", ephemeral=True)
-            self.save_song_requests()
-
-            track = Track(self.max_track_id + 1, oldest.title, oldest.artist, yt_uri=oldest.yt_uri, yt_vid_title=oldest.yt_vid_title, yt_vid_length=oldest.yt_vid_length)
-            self.max_track_id += 1
-            self.song_database.append(track)
-            self.save_song_database()
-        else:
-            oldest.status = TrackRequest.STATUS_DENIED
-
-            await interaction.followup.send(f"곡 {oldest.title} - {oldest.artist} 반려함.", ephemeral=True)
-            self.save_song_requests()
-
-        
 
     @app_commands.command(name="데이터갱신", description="(관리자 전용) 곡 데이터베이스를 새로고침합니다.")
     async def refresh_song_database(self, interaction: discord.Interaction):
@@ -676,7 +602,7 @@ class SongQuiz(commands.Cog):
 
         await interaction.response.send_message("데이터 갱신 완료.")
 
-    # Loads song data from songs.json.
+    # Loads song data from disk.
     def load_song_database(self):
         songs_file = data_dir / "songs.json"
 
@@ -689,6 +615,7 @@ class SongQuiz(commands.Cog):
                 self.song_database.append(track)
                 self.max_track_id = max(self.max_track_id, track.id)
 
+    # Saves song data to disk.
     def save_song_database(self):
         songs_file = data_dir / "songs.json"
 
@@ -697,6 +624,7 @@ class SongQuiz(commands.Cog):
 
             json.dump(songs, f, indent=2, ensure_ascii=False)
 
+    # Loads song requests from disk.
     def load_song_requests(self):
         request_file = base_dir / "song_requests.json"
 
@@ -711,6 +639,7 @@ class SongQuiz(commands.Cog):
             print("Something wrong on opening request file.")
             print(e)
 
+    # Saves song requests to disk.
     def save_song_requests(self):
         request_file = base_dir / "song_requests.json"
 

@@ -4,7 +4,7 @@ import re
 import argparse
 import os
 import yt_dlp
-import subprocess
+from datetime import timezone, datetime, timedelta
 from pathlib import Path
 from bs4 import BeautifulSoup
 from selenium import webdriver
@@ -20,6 +20,14 @@ forbidden_regex = re.compile(pattern)
 
 YDL_OPTIONS = {'format': 'bestaudio', 'outtmpl': 'songs/%(id)s.opus', 'quiet': True}
 
+
+def datetime_to_str(dt: datetime):
+    return dt.strftime("%Y-%m-%d %H:%M:%S")
+
+def datetime_from_str(s: str):
+    KST = timezone(timedelta(hours=9))
+    return datetime.strptime(s, "%Y-%m-%d %H:%M:%S").replace(tzinfo=KST)
+
 class Track:
     def __init__(self, id: int, title: str, artist: str, yt_uri: str | None = None, yt_vid_title: str | None = None, yt_vid_length: int | None = None, upvotes: int = 0, downvotes: int = 0):
         self.id = id
@@ -33,6 +41,133 @@ class Track:
 
     def __str__(self):
         return f"{self.id}\t{self.title}\t{self.artist}\t{self.yt_uri}"
+
+class TrackRequest:
+    STATUS_IN_QUEUE = 0
+    STATUS_APPROVED = 1
+    STATUS_DENIED = 2
+
+    def __init__(self, uid, username, title, artist, yt_uri, yt_vid_title, yt_vid_length, status=0, notes=None, when=None):
+
+        self.id = 0
+        self.uid = uid
+        self.username = username
+        self.title = title
+        self.artist = artist
+        self.yt_uri = yt_uri
+        self.yt_vid_title = yt_vid_title
+        self.yt_vid_length = yt_vid_length
+        self.status = status
+        self.notes = notes
+        self.when = when
+
+    @staticmethod
+    def from_json(json_dict: dict):
+        id = json_dict['id']
+        uid = json_dict['uid']
+        username = json_dict['username']
+        title = json_dict['title']
+        artist = json_dict['artist']
+        yt_uri = json_dict['yt_uri']
+        yt_vid_title = json_dict['yt_vid_title']
+        yt_vid_length = json_dict['yt_vid_length']
+        status = json_dict['status']
+        notes = json_dict['notes']
+        when = datetime_from_str(json_dict['when'])
+
+        req = TrackRequest(uid, username, title, artist, yt_uri, yt_vid_title, yt_vid_length, status=status, notes=notes, when=when)
+        req.id = id
+
+        return req
+        
+    def as_dict(self):
+        value = self.__dict__.copy()
+        value["when"] = datetime_to_str(value["when"])
+
+        return value
+    
+    def judge(self):
+        print("Judging request...")
+        print(f"\tTitle: {self.title}")
+        print(f"\tArtist: {self.artist}")
+        print(f"\tRequested by: {self.username}")
+        print(f"\tRequested date: {datetime_to_str(self.when)}")
+        print(f"\tYoutube video URL: https://www.youtube.com/watch?v={self.yt_uri}")
+        print(f"\tYoutube video title: {self.yt_vid_title}")
+        print(f"\tYoutube video length: {self.yt_vid_length}")
+        print()
+
+        decision = input("Type 1 to approve, 2 to deny. (Blank for skip):")
+
+        if decision.strip() == "1":
+            self.status = TrackRequest.STATUS_APPROVED
+
+            print("Good! Now, suggest the fix for title, artist, URL.")
+            new_title = input("Suggest better title string (Blank for no suggestion):").strip()
+            new_artist = input("Suggest better artist string (Blank for no suggestion):").strip()
+            new_vid_url = input("Suggest better youtube URI (Blank for no suggestion):").strip()
+            new_vid_title = input("Suggest better youtube video title (Blank for no suggestion):").strip()
+            new_vid_length = input("Suggest better youtube video length (Blank for no suggestion):").strip()
+
+            if new_title != "":
+                self.title = new_title
+
+            if new_artist != "":
+                self.artist = new_artist
+
+            if new_vid_url != "":
+                self.yt_uri = new_vid_url
+
+            if new_vid_title != "":
+                self.yt_vid_title = new_vid_title
+
+            if new_vid_length != "":
+                try:
+                    self.yt_vid_length = int(new_vid_length)
+                except:
+                    print("\tOops, you've set improper youtube video length. It would not be applied.")
+
+            print(">> Accepted entry.")
+
+        elif decision.strip() == "2":
+            self.status = TrackRequest.STATUS_DENIED
+            
+            
+            why = input("Please pick the reason for denial." \
+            "1: The song already exists in the database." \
+            "2: The request is duplicate." \
+            "3: The title contains improper characters." \
+            "4: The song is not famous to be included in the quiz." \
+            "5: etc"
+            )
+
+            if why == "1":
+                note = "이미 존재하는 곡"
+            elif why == "2":
+                note = "중복 요청"
+            elif why == "3":
+                note = "특수문자 제목 불가능"
+            elif why == "4":
+                note = "인지도 기준 미달"
+            else:
+                note = input("Please write the reason for denial.\n")
+                note = "없음" if note == "" else note
+
+            note = "사유: " + note
+
+            self.notes = note
+
+            print(">> Denied entry.")
+        else:
+            print(">> Skipped entry.")
+
+
+    def str_for_user(self):
+        status_exp = TrackRequest.status_verbose(self.status)
+        notes = self.notes if self.notes is not None else ""
+
+        return f"{status_exp} | {self.title.replace("*", "")} - {self.artist.replace("*", "")} | {datetime_to_str(self.when)} | {notes}"
+
 
 class SongManager:
     def __init__(self):
@@ -290,12 +425,56 @@ class SongManager:
             for _ in as_completed(futures):
                 success += 1
 
+    def judge_song_requests(self):
+        requests = []
+        request_path = base_dir.parent / "bot/song_requests.json"
+
+        print("Loading requests..")
+
+        # Load song requests from bot/song_requests.json. Up to 1000 entries.
+        try:
+            with open(request_path, "r", encoding="utf-8") as f:
+                obj = json.load(f)
+
+                for data in obj:
+                    track_request = TrackRequest.from_json(data)
+
+                    requests.append(track_request)
+        except:
+            pass
+
+        print("Judge the requests.")
+        
+        # Judge all in-queue requests.
+        for req in requests:
+            req: TrackRequest
+            if req.status == TrackRequest.STATUS_IN_QUEUE:
+                print("====================================")
+                req.judge()
+
+                if req.status == TrackRequest.STATUS_APPROVED:
+                    print(">> Adding track information..")
+
+                    tid = self.track_new_id
+                    self.track_new_id += 1
+                    track = Track(tid, req.title, req.artist, req.yt_uri, yt_vid_title=req.yt_vid_title, yt_vid_length=req.yt_vid_length)
+                    self.tracks.append(track)
+
+                    print(">> Done.")
+
+        # Save song requests to bot/song_requests.json.
+        with open(request_path, "w", encoding="utf-8") as f:
+            saved = list(map(lambda x: x.as_dict(), requests[-1000:]))
+
+            json.dump(saved, f, indent=2, ensure_ascii=False)
+
 if __name__ == "__main__":
     arg_parser = argparse.ArgumentParser()
     arg_parser.add_argument('-m', "--melon", action="store_true", help="query melon chart to collect basic database of songs.")
     arg_parser.add_argument('-y', "--youtube", action="store_true", help="find YT links for queried tracks.")
     arg_parser.add_argument('-d', "--download", action="store_true", help="download audio files with given YT links.")
     arg_parser.add_argument('-f', "--filter", action="store_true", help="filter artists with exclusion list 'forbidden_artists.json'")
+    arg_parser.add_argument('-j', "--judge", action="store_true", help="open song request one by one, and judge them.")
     arg_parser.add_argument('-e', "--explore", action="store_true", help="explore data, implement your custom action for traveling song data.")
     args = arg_parser.parse_args()
 
@@ -320,6 +499,12 @@ if __name__ == "__main__":
     elif args.download:
         manager.load_crawled_entries()
         manager.download_youtube_audios()
+
+    elif args.judge:
+        manager.load_crawled_entries()
+        manager.judge_song_requests()
+        manager.save_crawled_entries()
+
 
     elif args.explore:
         manager.load_crawled_entries()
